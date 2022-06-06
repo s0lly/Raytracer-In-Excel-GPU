@@ -2,7 +2,7 @@
 Raytracer in our favourite spreadsheet application, using the GPU!
 
 NOTE: For this model to work, you  need to include the Excel Add In "Excel GPU Demo Raytracing.xll" via the "Options->Add-ins->Excel Add-ins" menu, and have the shader in the following file path: C:\Excel XLLs\Raytracing\shaders\
-See the accompanying video to set up the model and add-in correctly: 
+See the accompanying video to set up the model and add-in correctly: https://youtu.be/l40YTagEOC4
 NB: If the add-in is not working (i.e. is crashing Excel when Excel opens), it can be disabled by opening a blank workbook and disabling the add-in in the "Options->Add-ins->Excel Add-ins" menu
 
 Summary
@@ -10,7 +10,8 @@ Summary
 This excel file demonstrates using the GPU through Excel. The GPU is able to handle vast numbers of calculations per second, and what better place to throw calculations at the GPU than through Excel?
 The Excel Add-In includes a number of functions that demonstrate this usage. This file only demonstrates the "RaytraceImage" function.
 The raytracing algorithms used are largely based on that used in the book "The Ray Tracer Challenge" by Jamis Buck. It is an excelllent book that teaches the foundations of Raytracing in a fun and engaging way.
-
+The model, add-in, and shader files can be found here: https://github.com/s0lly/Raytracer-In-Excel-GPU
+NB: As a comment of caution, you should not download XLLs / DLLS and EXE files from the internet - do so at your own volition
 
 Instructions:
 
@@ -35,4 +36,5 @@ https://https://www.twitch.tv/s0llygaming
 
 THE MODEL AND EXCEL ADD-IN ARE PROVIDED WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
 IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE MODEL OR THE USE OR OTHER DEALINGS IN THE MODEL.
+
 
