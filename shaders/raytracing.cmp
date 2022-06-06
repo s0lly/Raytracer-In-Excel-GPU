@@ -1,0 +1,254 @@
+#version 460 core
+
+layout (local_size_x = 512) in;
+
+layout(rgba32f, binding=0) uniform imageBuffer rayOriginsTexture;
+layout(rgba32f, binding=1) uniform imageBuffer rayDirectionsTexture;
+layout(rgba32f, binding=2) uniform imageBuffer sphereOriginsTexture;
+layout(rgba32f, binding=3) uniform imageBuffer sphereRadiiTexture;
+layout(rgba32f, binding=4) uniform imageBuffer spherePhongMaterialInfosTexture;
+layout(rgba32f, binding=5) uniform imageBuffer sphereReflectionsTexture;
+layout(rgba32f, binding=6) uniform imageBuffer output0Texture;
+
+struct OutputData
+{
+	float tSelected;
+	int hitSphereID;
+	vec3 hitLoc;
+};
+
+struct HitData
+{
+	float tSelected;
+	int objSelected;
+};
+
+struct HitInfo
+{
+	vec3 reflectionOrigin;
+	vec3 reflectionDirection;
+	float reflection;
+	float totalIntensity;
+};
+
+HitData sphereTest(vec3 rayOrigin, vec3 rayDirection)
+{
+	float a = 0.0f;
+	float b = 0.0f;
+	float c = 0.0f;
+	float t0 = 0.0f;
+	float t1 = 0.0f;
+
+	float tSelected = 9999999999.0;
+	int objSelected = -1;
+
+	for (int objIndex = 0; objIndex < 10; objIndex++)
+	{
+		a = 0.0f;
+		b = 0.0f;
+		c = 0.0f;
+		t0 = 0.0f;
+		t1 = 0.0f;
+
+		vec3 sphereToOrigin = rayOrigin - vec3(imageLoad(sphereOriginsTexture, objIndex));
+
+		a = dot(sphereToOrigin, sphereToOrigin);
+		b = dot(rayDirection, sphereToOrigin);
+
+		float sphereRadius = imageLoad(sphereRadiiTexture, objIndex).x;
+		c = b * b - a + sphereRadius * sphereRadius;
+
+		if (c <= 0.0f)
+		{
+			t0 = 9999999999.0f;
+			t1 = 9999999999.0f;
+		}
+		else
+		{
+			float cSqrt = sqrt(c);
+			t0 = -b - cSqrt;
+			t1 = -b + cSqrt;
+		}
+		
+		
+		if (t0 < 0.0f)
+		{
+			if (t1 >= 0.0f && t1 < tSelected)
+			{
+				tSelected = t1;
+				objSelected = objIndex;
+			}
+		}
+		else
+		{
+			if (t0 < tSelected)
+			{
+				tSelected = t0;
+				objSelected = objIndex;
+			}
+		}
+	}
+
+	HitData hitData;
+
+	hitData.tSelected = tSelected;
+	hitData.objSelected = objSelected;
+
+	return hitData;
+}
+
+
+
+HitInfo GetHitInfo(vec3 rayOrigin, vec3 rayDirection, HitData hitData, vec3 randNums)
+{
+	float tSelected = hitData.tSelected;
+	int objSelected = hitData.objSelected;
+
+	vec3 lightLoc = vec3(-10.0f, 15.0f, -10.0f);
+	float lightIntensity = 100.0f;
+	float lightRadius = 2.4f;
+
+	vec3 hitLocation = vec3(0.0f);
+	vec3 hitNormal = vec3(0.0f);
+	vec3 rayReflect = vec3(0.0f);
+	float totalIntensity = 0.0f;
+	float reflection = 0.0f;
+
+	if (objSelected >= 0)
+	{
+		vec4 phongMaterial = imageLoad(spherePhongMaterialInfosTexture, objSelected);
+		
+		float ambient = phongMaterial.x;
+		float diffuse = phongMaterial.y;
+		float specular = phongMaterial.z;
+		float shininess = phongMaterial.w;
+		reflection = imageLoad(sphereReflectionsTexture, objSelected).x;
+		
+		vec3 sphereOrigin = vec3(imageLoad(sphereOriginsTexture, objSelected));
+		float sphereRadius = imageLoad(sphereRadiiTexture, objSelected).x;
+		
+		hitLocation = rayOrigin + rayDirection * tSelected;
+		hitNormal = normalize(hitLocation - sphereOrigin);
+		vec3 hitToLight = normalize(lightLoc - hitLocation);
+		rayReflect = reflect(rayDirection, hitNormal);
+		vec3 lightReflect = reflect(-hitToLight, hitNormal);
+
+		vec3 halfway = normalize(-rayDirection + hitToLight);
+
+		float lightDotNormal = dot(hitToLight, hitNormal);
+		float rayDotLightReflect = dot(halfway, hitNormal);
+
+		vec3 lightDistance = lightLoc - hitLocation;
+		float lightDistanceSqrdInv = 1.0f / dot(lightDistance, lightDistance);
+
+		float ambientIntensity = ambient;
+		float diffuseIntensity = diffuse * max(lightDotNormal, 0.0f);
+		float showSpecular = 1.0f;
+		if (lightDotNormal < 0.0f)
+		{
+			showSpecular = 0.0f;
+		}
+		float specularIntensity = pow(max(rayDotLightReflect, 0.0f), shininess) * max(lightDotNormal, 0.0f) * specular;
+		totalIntensity = ((ambientIntensity + diffuseIntensity) * lightDistanceSqrdInv + specularIntensity) * lightIntensity;
+
+		vec3 upVec = vec3(0.0f, 1.0f, 0.0f);
+
+		if (dot(upVec, hitToLight) > 0.9f)
+		{
+			upVec = vec3(1.0f, 0.0f, 0.0f);
+		}
+		vec3 rightVec = normalize(cross(upVec, hitToLight));
+		upVec = normalize(cross(hitToLight, rightVec));
+
+		vec3 shadowRayOrigin = hitLocation + hitNormal * 0.01;
+
+		float proportionInShadow = 0.0f;
+
+		int shadowRays = 391; // must be an odd number
+
+		for (int i = 0; i < shadowRays; i++)
+		{
+			vec3 upVecIteration = upVec * (float(abs(shadowRays / 2 - i)) / float(shadowRays / 2) - 0.5f) * 2.0f;
+			vec3 rightVecIteration = rightVec * (float(abs(shadowRays / 2 - abs(shadowRays / 2 - (i - shadowRays / 4)))) / float(shadowRays / 2) - 0.5f) * 2.0f;
+			vec3 offsetVecIteration = normalize(rightVecIteration + upVecIteration) * lightRadius * imageLoad(rayOriginsTexture, int(mod(mod(gl_GlobalInvocationID.x * 537, 11079) * mod(i * 377, 6079), 10001) + 1)).x;
+			vec3 newLightLoc = lightLoc + offsetVecIteration;
+		
+			HitData hitDataShadow = sphereTest(shadowRayOrigin, normalize(newLightLoc - hitLocation));
+
+			if (hitDataShadow.objSelected >= 0)
+			{
+				proportionInShadow += 1.0f / float(shadowRays);
+			}
+		}
+
+		totalIntensity = ambient * lightDistanceSqrdInv * lightIntensity * proportionInShadow + (1 - proportionInShadow) * totalIntensity;
+	}
+
+	HitInfo hitInfo;
+	hitInfo.reflectionOrigin = hitLocation + hitNormal * 0.01f;
+	hitInfo.reflectionDirection = rayReflect;
+	hitInfo.reflection = reflection;
+	hitInfo.totalIntensity = totalIntensity;
+
+	return hitInfo;
+}
+
+
+void main()
+{
+	int rows = 180;
+	int columns = 320;
+	int rays = rows * columns;
+
+	mat3 viewMatrix = transpose(mat3(vec3(imageLoad(rayOriginsTexture, rays + 1)), vec3(imageLoad(rayOriginsTexture, rays + 2)), vec3(imageLoad(rayOriginsTexture, rays + 3))));
+	
+	vec3 rayOrigin = vec3(imageLoad(rayOriginsTexture, 0));
+	
+
+	int randNumIterator = int(gl_GlobalInvocationID.x);
+	int randNumModder = rays - 1;
+	int randNumScaler = 7;
+	
+	float averageIntensity = 0.0f;
+	
+	int multiSamples = 8;
+
+	for (int i = 0; i < multiSamples; i++)
+	{
+		vec3 sampleRands = vec3(imageLoad(rayOriginsTexture, randNumIterator));
+		randNumIterator += randNumScaler;
+
+		vec3 screenDims = vec3(0.0f);
+
+		screenDims.x = ((float(mod(gl_GlobalInvocationID.x, columns)) - (float(columns) - 1.0f) / 2.0f) / ((float(columns) - 1.0f) / 2.0f)) * (float(columns) / float(rows)) + (sampleRands.x / (float(columns))) * (float(columns) / float(rows));
+		screenDims.y = ((float(int(gl_GlobalInvocationID.x / columns)) - (float(rows) - 1.0f) / 2.0f) / ((float(rows) - 1.0f) / 2.0f)) + (sampleRands.y / (float(rows)));
+		screenDims.z = (float(columns) / float(rows));
+
+		screenDims = normalize(viewMatrix * screenDims);
+
+		vec3 rayDirection = screenDims;
+		rayDirection = normalize(rayDirection);
+
+		HitData hitData0 = sphereTest(rayOrigin, rayDirection);
+		HitInfo hitInfo0 = GetHitInfo(rayOrigin, rayDirection, hitData0, sampleRands);
+
+		HitData hitData1 = sphereTest(hitInfo0.reflectionOrigin, hitInfo0.reflectionDirection);
+		HitInfo hitInfo1 = GetHitInfo(hitInfo0.reflectionOrigin, hitInfo0.reflectionDirection, hitData1, sampleRands);
+		
+		HitData hitData2 = sphereTest(hitInfo1.reflectionOrigin, hitInfo1.reflectionDirection);
+		HitInfo hitInfo2 = GetHitInfo(hitInfo1.reflectionOrigin, hitInfo1.reflectionDirection, hitData2, sampleRands);
+		
+		float totalIntensity = hitInfo0.totalIntensity * (1.0f - hitInfo0.reflection) +
+		hitInfo0.reflection * (hitInfo1.totalIntensity * (1.0f - hitInfo1.reflection) + hitInfo1.reflection * (hitInfo2.totalIntensity));
+
+		averageIntensity += totalIntensity;
+	}
+
+	averageIntensity = averageIntensity / float(multiSamples);
+	
+	vec3 randNums = vec3(imageLoad(rayOriginsTexture, int(gl_GlobalInvocationID.x +	1)));
+	averageIntensity = pow(max(averageIntensity + (randNums.x - 0.5f) / 700.0f, 0.0f), 1.0f / 2.2f);
+
+	imageStore(output0Texture, int(gl_GlobalInvocationID.x), vec4(averageIntensity));
+}
+
